@@ -1,15 +1,19 @@
+# sockets/socketio_app.py
 from flask_socketio import SocketIO
-from config import SOCKETIO_MESSAGE_QUEUE
 
-socketio = SocketIO(cors_allowed_origins="*", async_mode="threading",
-                    message_queue=SOCKETIO_MESSAGE_QUEUE or None)
+# Initialize SocketIO without attaching to app yet
+socketio = SocketIO(cors_allowed_origins="*")
 
-# 🔥 Fix: Add this function
-def broadcast_alert(alert):
-    """
-    Emits alert to all connected clients on 'waf_alert' channel.
-    """
-    try:
-        socketio.emit("waf_alert", alert, broadcast=True)
-    except Exception as e:
-        print("Socket emit error:", e)
+# Example event handlers
+@socketio.on("connect")
+def handle_connect():
+    print("Client connected")
+
+@socketio.on("disconnect")
+def handle_disconnect():
+    print("Client disconnected")
+
+@socketio.on("message")
+def handle_message(msg):
+    print("Message received:", msg)
+    socketio.send(f"Server received: {msg}")

@@ -1,25 +1,34 @@
+# routes/rules.py
 from flask import Blueprint, request, jsonify
-from models.rule import list_rules, create_rule, update_rule, delete_rule
+from config import RULES
+from bson import ObjectId
+from models.log import log_request
 
 bp = Blueprint("rules", __name__, url_prefix="/api/rules")
 
 @bp.route("/", methods=["GET"])
 def get_rules():
-    return jsonify(list_rules())
+    rules = list(RULES.find())
+    for r in rules:
+        r["_id"] = str(r["_id"])
+    return jsonify(rules)
 
 @bp.route("/", methods=["POST"])
-def post_rule():
-    doc = request.get_json(force=True)
-    rid = create_rule(doc)
-    return jsonify({"id": rid}), 201
+def add_rule():
+    body = request.get_json(force=True)
+    res = RULES.insert_one(body)
+    log_request({"action":"rule_created","rule_id":str(res.inserted_id),"ip":request.remote_addr})
+    return jsonify({"id": str(res.inserted_id)}), 201
 
-@bp.route("/<rid>", methods=["PATCH"])
-def patch_rule(rid):
-    patch = request.get_json(force=True)
-    update_rule(rid, patch)
-    return jsonify({"ok": True})
+@bp.route("/<rule_id>", methods=["PUT"])
+def update_rule(rule_id):
+    body = request.get_json(force=True)
+    RULES.update_one({"_id": ObjectId(rule_id)}, {"$set": body})
+    log_request({"action":"rule_updated","rule_id":rule_id,"ip":request.remote_addr})
+    return jsonify({"status":"ok"}), 200
 
-@bp.route("/<rid>", methods=["DELETE"])
-def del_rule(rid):
-    delete_rule(rid)
-    return jsonify({"ok": True})
+@bp.route("/<rule_id>", methods=["DELETE"])
+def delete_rule(rule_id):
+    RULES.delete_one({"_id": ObjectId(rule_id)})
+    log_request({"action":"rule_deleted","rule_id":rule_id,"ip":request.remote_addr})
+    return jsonify({"status":"deleted"}), 200

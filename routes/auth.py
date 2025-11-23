@@ -1,12 +1,15 @@
-# routes/auth.py
 from flask import Blueprint, request, jsonify
 from models.user import create_user, find_by_email, get_public
 from flask_jwt_extended import create_access_token
-from passlib.hash import bcrypt  # fixed import
+from passlib.hash import bcrypt
+from models.log import log_request
+from datetime import datetime
 
 bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
-# POST /api/auth/signup
+# --------------------------
+# POST /signup
+# --------------------------
 @bp.route("/signup", methods=["POST"])
 def signup():
     body = request.get_json(force=True)
@@ -15,27 +18,42 @@ def signup():
     role = body.get("role", "viewer")
     name = body.get("name")
 
-    # Validate inputs
     if not email or not password:
-        return jsonify({"error": "email and password are required"}), 400
+        log_request({
+            "action": "signup_failed",
+            "email": email,
+            "reason": "missing_email_or_password",
+            "ip": request.remote_addr
+        })
+        return jsonify({"error": "Email and password are required"}), 400
 
     if find_by_email(email):
-        return jsonify({"error": "user exists"}), 400
+        log_request({
+            "action": "signup_failed",
+            "email": email,
+            "reason": "user_exists",
+            "ip": request.remote_addr
+        })
+        return jsonify({"error": "User already exists"}), 400
 
-    # create user
     uid = create_user(email, password, role, name)
 
-    # generate JWT token
-    token = create_access_token(identity={
+    log_request({
+        "action": "signup_success",
         "email": email,
-        "role": role,
-        "id": uid
+        "user_id": str(uid),
+        "ip": request.remote_addr
     })
 
-    return jsonify({"token": token, "id": uid}), 201
+    # JWT: identity is the user ID (string), role as additional_claims
+    token = create_access_token(identity=str(uid), additional_claims={"role": role, "email": email})
+
+    return jsonify({"token": token, "id": str(uid)}), 201
 
 
-# POST /api/auth/login
+# --------------------------
+# POST /login
+# --------------------------
 @bp.route("/login", methods=["POST"])
 def login():
     body = request.get_json(force=True)
@@ -44,17 +62,34 @@ def login():
 
     user = find_by_email(email)
     if not user:
-        return jsonify({"error": "invalid credentials"}), 401
+        log_request({
+            "action": "login_failed",
+            "email": email,
+            "reason": "user_not_found",
+            "ip": request.remote_addr
+        })
+        return jsonify({"error": "Invalid credentials"}), 401
 
-    # verify password
     if not bcrypt.verify(password, user["password"]):
-        return jsonify({"error": "invalid credentials"}), 401
+        log_request({
+            "action": "login_failed",
+            "email": email,
+            "reason": "wrong_password",
+            "ip": request.remote_addr
+        })
+        return jsonify({"error": "Invalid credentials"}), 401
 
-    # create JWT token
-    token = create_access_token(identity={
+    # JWT: identity is user ID, extra info in additional_claims
+    token = create_access_token(
+        identity=str(user["_id"]),
+        additional_claims={"role": user.get("role", "viewer"), "email": user["email"]}
+    )
+
+    log_request({
+        "action": "login_success",
         "email": user["email"],
-        "role": user.get("role", "viewer"),
-        "id": str(user["_id"])
+        "user_id": str(user["_id"]),
+        "ip": request.remote_addr
     })
 
     return jsonify({"token": token, "user": get_public(user)}), 200
