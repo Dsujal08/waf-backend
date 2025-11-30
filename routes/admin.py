@@ -1,41 +1,65 @@
+# routes/admin_logs.py
 from flask import Blueprint, jsonify
-from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
-from bson import ObjectId
+from flask_jwt_extended import jwt_required, get_jwt, get_jwt_identity
+from models.log import get_logs
 from datetime import datetime
-from config import USERS, LOGS
+import pytz
 
-bp = Blueprint("admin", __name__, url_prefix="/api/admin")
+bp = Blueprint("logs_api", __name__, url_prefix="/api/admin/logs")
+IST = pytz.timezone("Asia/Kolkata")
 
-@bp.route("/logs", methods=["GET"])
+
+@bp.route("/", methods=["GET"])
 @jwt_required()
-def get_logs():
-    user_id = get_jwt_identity()
-    claims = get_jwt()  # contains role, email, etc.
+def fetch_logs():
+    user_id = get_jwt_identity()  # not used but verifies identity
+    claims = get_jwt()
 
-    # Validate user exists
-    try:
-        user = USERS.find_one({"_id": ObjectId(user_id)})
-        if not user:
-            return jsonify({"error": "Invalid user"}), 401
-    except:
-        return jsonify({"error": "Invalid user"}), 401
-
-    # Only admin can access logs
+    # Only admins can view logs
     if claims.get("role") != "admin":
-        return jsonify({"error": "Access denied"}), 403
+        return jsonify({"error": "Forbidden"}), 403
 
-    # Fetch logs
-    logs_cursor = LOGS.find().sort("timestamp", -1)
-    logs = [
-        {
+    logs = get_logs()
+    formatted_logs = []
+
+    for log in logs:
+        utc_ts = log.get("timestamp")
+        dt_utc = None
+
+        # Convert stored UTC timestamp to IST
+        if utc_ts:
+            if isinstance(utc_ts, datetime):
+                dt_utc = utc_ts
+            else:
+                dt_utc = datetime.fromisoformat(str(utc_ts))
+
+            dt_utc = dt_utc.replace(tzinfo=pytz.utc)
+            dt_ist = dt_utc.astimezone(IST)
+            timestamp_ist = dt_ist.strftime("%d/%m/%y, %I:%M:%S %p")
+        else:
+            timestamp_ist = ""
+
+        formatted_logs.append({
             "_id": str(log["_id"]),
-            "timestamp": log.get("timestamp").isoformat() if log.get("timestamp") else None,
+            "timestamp_utc": dt_utc.isoformat() if dt_utc else "",
+            "timestamp_ist": timestamp_ist,
+
             "action": log.get("action", ""),
             "email": log.get("email", ""),
-            "role": log.get("role", ""),   # <-- NOW WILL SHOW
-            "extra": log.get("extra", "")
-        }
-        for log in logs_cursor
-    ]
+            "role": log.get("role", ""),
 
-    return jsonify(logs), 200
+            "ip": log.get("ip", ""),
+            "device_id": log.get("device_id", ""),
+            "user_agent": log.get("user_agent", ""),
+
+            "city": log.get("city", ""),
+            "state": log.get("state", ""),
+            "country": log.get("country", ""),
+
+            "login_time_utc": log.get("login_time_utc", ""),
+            "login_time_ist": log.get("login_time_ist", ""),
+
+            "extra": log.get("extra", "")
+        })
+
+    return jsonify(formatted_logs), 200

@@ -22,9 +22,12 @@ app.config["JWT_SECRET_KEY"] = JWT_SECRET
 # Enable CORS
 CORS(
     app,
-    origins=[FRONTEND_URL],
-    supports_credentials=True
+    resources={r"/*": {"origins": FRONTEND_URL}},
+    supports_credentials=True,
+    allow_headers=["Content-Type", "Authorization"],
+    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"]
 )
+
 
 # JWT Manager
 jwt = JWTManager(app)
