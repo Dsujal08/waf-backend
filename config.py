@@ -10,7 +10,7 @@ DB = client.get_database("wafdb")
 
 # Collections
 USERS = DB["users"]
-LOGS = DB["logs"]
+LOGS = DB["LOGS"]
 RULES = DB["waf_rules"]
 ALERTS = DB["alerts"]
 ITEMS = DB["items"]

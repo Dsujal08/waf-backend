@@ -65,6 +65,7 @@ def login():
         log_request({
             "action": "login_failed",
             "email": email,
+            "role": "user",  # default
             "reason": "user_not_found",
             "ip": request.remote_addr
         })
@@ -74,6 +75,7 @@ def login():
         log_request({
             "action": "login_failed",
             "email": email,
+            "role": user.get("role", "user"),
             "reason": "wrong_password",
             "ip": request.remote_addr
         })
@@ -82,12 +84,14 @@ def login():
     # JWT: identity is user ID, extra info in additional_claims
     token = create_access_token(
         identity=str(user["_id"]),
-        additional_claims={"role": user.get("role", "viewer"), "email": user["email"]}
+        additional_claims={"role": user.get("role", "user"), "email": user["email"]}
     )
 
+    # ⭐ FIXED: Now log_request receives the REAL ROLE
     log_request({
         "action": "login_success",
         "email": user["email"],
+        "role": user.get("role", "user"),   # <---- THIS FIXES YOUR ISSUE
         "user_id": str(user["_id"]),
         "ip": request.remote_addr
     })
